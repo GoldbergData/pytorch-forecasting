@@ -62,8 +62,8 @@ class ExpandLayer(nn.Module):
         #        [2. 3.]]
         # We achieve this by doing a broadcast add of
         # [[0.] [1.] [2.]] and [[0. 1.]]
-        idx = torch.add(torch.arange(Trnn).unsqueeze(axis = 1), 
-                        torch.arange(lead_future).unsqueeze(axis = 0))
+        idx = torch.add(torch.arange(self.Trnn).unsqueeze(axis = 1), 
+                        torch.arange(self.lead_future).unsqueeze(axis = 0))
         # Now we slice `input`, taking elements from `input` that correspond to
         # the indices in `idx` along the `expand_axis` dimension
         return x[:, idx, :]
