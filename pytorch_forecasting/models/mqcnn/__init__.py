@@ -9,13 +9,25 @@ import torch as torch
 from pytorch_forecasting.data import TimeSeriesDataSet
 from pytorch_forecasting.metrics import MAE, MAPE, MASE, RMSE, SMAPE, MultiHorizonMetric, QuantileLoss
 from pytorch_forecasting.models.base_model import BaseModelWithCovariates
+from pytorch_forecasting.models.mqcnn.sub_modules import (
+    StaticLayer, ConvLayer, ExpandLayer
+)
 
 
 class MQCNN(BaseModelWithCovariates):
     pass
 
 class MQCNNEncoder(nn.Module):
-    pass
+    def __init__(self, ):
+        self.static = StaticLayer()
+        self.conv = ConvLayer()
+
+    def forward(self, x):
+        x_s = self.static(x)
+        x_t = self.conv(x)
+
+        return torch.cat((x_s, x_t), axis = 1)
+
 
 class MQCNNDecoder(nn.Module):
     pass
