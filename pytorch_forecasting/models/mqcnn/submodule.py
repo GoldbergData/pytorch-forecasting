@@ -13,7 +13,7 @@ class StaticLayer(nn.Module):
 class ConvLayer(nn.Module):
     pass
 
-class ExpandLayer(HybridBlock):
+class ExpandLayer(nn.Module):
     """Expands the dimension referred to as `expand_axis` into two
     dimensions by applying a sliding window. For example, a tensor of
     shape (1, 4, 2) as follows:
@@ -46,10 +46,9 @@ class ExpandLayer(HybridBlock):
     expand_axis : int
         Axis to expand"""
 
-    def __init__(self, Trnn, lead_future, expand_axis=1, **kwargs):
+    def __init__(self, Trnn, lead_future, **kwargs):
         super(ExpandLayer, self).__init__(**kwargs)
     
-        self.expand_axis = expand_axis
         self.Trnn = Trnn
         self.lead_future = lead_future
 
