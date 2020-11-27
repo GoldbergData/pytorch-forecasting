@@ -11,7 +11,26 @@ class StaticLayer(nn.Module):
     pass
 
 class ConvLayer(nn.Module):
-    pass
+    def __init__(self, input_channels, num_channels, kernel_size, padding):
+        self.conv = nn.Sequential(
+            nn.Conv1d(input_channels, num_channels, kernel_size, padding = 1, dilation = 1),
+            nn.ReLU(),
+            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 2),
+            nn.ReLU(),
+            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 4),
+            nn.ReLU(),
+            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 8), 
+            nn.ReLU(),
+            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 16),
+            nn.ReLU(),
+            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 32),
+            nn.ReLU()
+        )
+
+    def forward(self, x_t):
+        x_t = self.conv(x_t.permute(0, 2, 1))
+        
+        return x_t.permute(0, 2, 1)
 
 class ExpandLayer(nn.Module):
     """Expands the dimension referred to as `expand_axis` into two
