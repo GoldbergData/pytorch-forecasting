@@ -8,7 +8,12 @@ import pandas as pd
 import torch as torch
 
 class StaticLayer(nn.Module):
-    pass
+    def __init__(self,in_channels, out_channels ):
+        self.static = nn.Linear(in_channels, out_channels)
+
+    def forward(self, x):
+        return self.static(x)
+
 
 class ConvLayer(nn.Module):
     def __init__(self, input_channels, num_channels, kernel_size, padding):
