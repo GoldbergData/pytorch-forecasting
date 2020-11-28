@@ -20,24 +20,29 @@ class StaticLayer(nn.Module):
 
 
 class ConvLayer(nn.Module):
-    def __init__(self, input_channels, num_channels, kernel_size, padding):
-        self.conv = nn.Sequential(
-            nn.Conv1d(input_channels, num_channels, kernel_size, padding = 1, dilation = 1),
-            nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 2),
-            nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 4),
-            nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 8), 
-            nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 16),
-            nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size, padding = 1, dilation = 32),
-            nn.ReLU()
-        )
+    def __init__(self, input_channels, num_channels, kernel_size = 2):
+    
+        c1 = nn.Conv1d(30, 30, 2, dilation = 1)
+        c2 = nn.Conv1d(30, 30, 2, dilation = 2)
+        c3 = nn.Conv1d(30, 30, 2,  dilation = 4)
+        c4 = nn.Conv1d(30, 30, 2, dilation = 8)
+        c5 = nn.Conv1d(30, 30, 2, dilation = 16)
+        c6 = nn.Conv1d(30, 30, 2, dilation = 32)
 
     def forward(self, x_t):
-        x_t = self.conv(x_t.permute(0, 2, 1))
+        x_t = x_t.permute(0, 2, 1))
+        x_t = F.pad(x_t, (0,0), "constant", 0)
+        x_t = c1(x_t)
+        x_t = F.pad(x_t, (2,0), "constant", 0)
+        x_t = c2(x_t)
+        x_t = F.pad(x_t, (4,0), "constant", 0)
+        x_t = c3(x_t)
+        x_t = F.pad(x_t, (8,0), "constant", 0)
+        x_t = c4(x_t)
+        x_t = F.pad(x_t, (16,0), "constant", 0)
+        x_t = c5(x_t)
+        x_t = F.pad(x_t, (32,0), "constant", 0)
+        x_t = c6(x_t)
         
         return x_t.permute(0, 2, 1)
 
