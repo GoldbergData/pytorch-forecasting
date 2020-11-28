@@ -8,11 +8,15 @@ import pandas as pd
 import torch as torch
 
 class StaticLayer(nn.Module):
-    def __init__(self,in_channels, out_channels ):
+    def __init__(self,in_channels, out_channels, dropout, Trnn):
+        self.Trnn = Trnn
+        self.dropout = dropout
         self.static = nn.Linear(in_channels, out_channels)
 
     def forward(self, x):
-        return self.static(x)
+        x = self.dropout(x)
+        x = self.static(x)
+        return x.unsqueeze(1).repeat(1, self.Trnn, 1)
 
 
 class ConvLayer(nn.Module):
