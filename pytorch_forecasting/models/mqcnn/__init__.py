@@ -173,6 +173,8 @@ class MQCNNDecoder(nn.Module):
 
     def _get_span_N(self, x):
         x = x.permute(0, 1, 3, 2)
-        x = x.contiguous().view(-1, self.Trnn, -1)
+        x = x.contiguous().view(-1, self.Trnn, x.size(-2) * x.size(-1))
+
+        x = nn.Linear(x.size(-1), self.spanN_count * self.num_quantiles)
 
         return x
