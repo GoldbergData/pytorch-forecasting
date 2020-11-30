@@ -9,6 +9,7 @@ import torch as torch
 
 class StaticLayer(nn.Module):
     def __init__(self,in_channels, out_channels, dropout, Trnn):
+        super().__init__()
         self.Trnn = Trnn
         self.dropout = dropout
         self.static = nn.Linear(in_channels, out_channels)
@@ -21,7 +22,7 @@ class StaticLayer(nn.Module):
 
 class ConvLayer(nn.Module):
     def __init__(self, input_channels, num_channels, kernel_size = 2):
-    
+        super().__init__()
         c1 = nn.Conv1d(30, 30, 2, dilation = 1)
         c2 = nn.Conv1d(30, 30, 2, dilation = 2)
         c3 = nn.Conv1d(30, 30, 2,  dilation = 4)
