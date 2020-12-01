@@ -13,14 +13,30 @@ from pytorch_forecasting.models.mqcnn.sub_modules import (
     StaticLayer, ConvLayer, ExpandLayer
 )
 
+class MQCNNModel(BaseModelWithCovariates):
+    def __init__(self, Trnn, static_features, timevarying_features, future_information, ltsp, lead_future):
+        self.Trnn = Trnn
+        self.static_features = static_features
+        self.timevarying_features = timevarying_features
+        self.future_information = future_information
+        self.ltsp = ltsp
+        self.lead_future = lead_future
 
-class MQCNN(BaseModelWithCovariates):
-    pass
+        encoder = MQCNNEncoder(self.Trnn, self.static_features, self.timevarying_features)
+        decoder = MQCNNDecoder(self.Trnn, self.lead_future, self.ltsp, self.future_information, self.future_information)
+        super(MQCNNModel, self).__init__()
 
 class MQCNNEncoder(nn.Module):
-    def __init__(self, ):
-        self.static = StaticLayer()
-        self.conv = ConvLayer()
+    def __init__(self, Trnn, static_features, timevarying_features):
+        self.Trnn = Trnn
+        self.static_features = static_features
+        self.timevarying_features = timevarying_features
+        self.static = StaticLayer(in_channels = len(self.static_features),
+                                  Trnn = self.Trnn,
+                                  static_features = self.static_features)
+
+        self.conv = ConvLayer(in_channels = len(self.timevarying_features),
+                             timevarying_features = self.timevarying_features)
 
     def forward(self, x):
         x_s = self.static(x)
@@ -75,13 +91,14 @@ class MQCNNDecoder(nn.Module):
 
     """
 
-    def __init__(self, config, ltsp, expander=None, hf1=None, hf2=None,
+    def __init__(self, Trnn, lead_future, future_information, ltsp, expander=None, hf1=None, hf2=None,
                  ht1=None, ht2=None, h=None, span_1=None, span_N=None,
                  **kwargs):
         super(MQCNNDecoder, self).__init__(**kwargs)
-        self.future_features_count = len(config.future_information)
-        self.Trnn = config.Trnn
-        self.lead_future = config.lead_future
+        self.future_features_count = len(future_information)
+        self.future_information = future_information
+        self.Trnn = Trnn
+        self.lead_future = lead_future
         self.ltsp = ltsp
 
         # We assume that Tpred == span1_count.
@@ -96,7 +113,7 @@ class MQCNNDecoder(nn.Module):
         with self.name_scope():
             # Setting default components:
             if expander is None:
-                expander = ExpandLayer(self.Trnn, config.lead_future)
+                expander = ExpandLayer(self.Trnn, self.lead_future, self.future_information)
             if hf1 is None:
                 hf1 = self._get_global_future_layer()
             if hf2 is None:
@@ -121,7 +138,8 @@ class MQCNNDecoder(nn.Module):
             self.span_1 = span_1
             self.span_N = span_N
 
-    def forward(self, F, xf, encoded):
+    def forward(self, F, x, encoded):
+        xf = x[[self.future_information]]
         expanded = self.expander(xf)
         hf1 = self.hf1(expanded)
         hf2 = self.hf2(expanded)
