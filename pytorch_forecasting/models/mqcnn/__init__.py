@@ -45,7 +45,7 @@ class MQCNNEncoder(nn.Module):
         return torch.cat((x_s, x_t), axis = 1)
 
 
-class MQCNNDecoder(nn.Module):
+cclass MQCNNDecoder(nn.Module):
     """Decoder implementation for MQCNN
 
     Parameters
@@ -91,7 +91,7 @@ class MQCNNDecoder(nn.Module):
 
     """
 
-    def __init__(self, Trnn, lead_future, future_information, ltsp, expander=None, hf1=None, hf2=None,
+    def __init__(self, Trnn, lead_future, future_information, ltsp, num_quantiles = 2,expander=None, hf1=None, hf2=None,
                  ht1=None, ht2=None, h=None, span_1=None, span_N=None,
                  **kwargs):
         super(MQCNNDecoder, self).__init__(**kwargs)
@@ -100,49 +100,46 @@ class MQCNNDecoder(nn.Module):
         self.Trnn = Trnn
         self.lead_future = lead_future
         self.ltsp = ltsp
+        self.num_quantiles = num_quantiles
 
         # We assume that Tpred == span1_count.
         self.Tpred = max(map(lambda x: x[0] + x[1], self.ltsp))
         span1_count = len(list(filter(lambda x: x[1] == 1, self.ltsp)))
-        assert span1_count == self.Tpred, "Number of span 1 horizons: {} " \
-                                          "does not match Tpred: {}" \
-                                          .format(span1_count, self.Tpred)
+        #print(self.Tpred, span1_count)
+        #assert span1_count == self.Tpred, f"Number of span 1 horizons: {span1_count}\
+                                            #does not match Tpred: {self.Tpred}" 
 
         self.spanN_count = len(list(filter(lambda x: x[1] != 1, self.ltsp)))
-        self.num_quantiles = len(config.quantiles)
-        with self.name_scope():
-            # Setting default components:
-            if expander is None:
-                expander = ExpandLayer(self.Trnn, self.lead_future, self.future_information)
-            if hf1 is None:
-                hf1 = self._get_global_future_layer()
-            if hf2 is None:
-                hf2 = self._get_local_future_layer()
-            if ht1 is None:
-                ht1 = self._get_horizon_specific()
-            if ht2 is None:
-                ht2 = self._get_horizon_agnostic()
-            if h is None:
-                h = self._get_local_mlp()
-            if span_1 is None:
-                span_1 = self._get_span_1()
-            if span_N is None:
-                span_N = self._get_span_N()
+        # Setting default components:
+        if expander is None:
+            expander = ExpandLayer(self.Trnn, self.lead_future, self.future_information)
+        if hf1 is None:
+            hf1 = GlobalFutureLayer(self.lead_future, self.future_features_count, out_channels=30)
+        if ht1 is None:
+            ht1 = HorizonSpecific(self.Tpred, self.Trnn, num = 20)
+        if ht2 is None:
+            ht2 = HorizonAgnostic(in_channels, out_channels, self.lead_future)
+        if h is None:
+            h = LocalMlp(in_channels, hidden, output)
+        if span_1 is None:
+            span_1 = Span1(self.Trnn, self.lead_future, self.num_quantiles)
+        if span_N is None:
+            span_N = SpanN(self.Trnn, self.lead_future, self.num_quantiles, self.spanN_count)
 
-            self.expander = expander
-            self.hf1 = hf1
-            self.hf2 = hf2
-            self.ht1 = ht1
-            self.ht2 = ht2
-            self.h = h
-            self.span_1 = span_1
-            self.span_N = span_N
+        self.expander = expander
+        self.hf1 = hf1
+        self.hf2 = hf2
+        self.ht1 = ht1
+        self.ht2 = ht2
+        self.h = h
+        self.span_1 = span_1
+        self.span_N = span_N
 
     def forward(self, F, x, encoded):
         xf = x[[self.future_information]]
         expanded = self.expander(xf)
         hf1 = self.hf1(expanded)
-        hf2 = self.hf2(expanded)
+        hf2 = F.tanh(expanded)
 
         ht = torch.cat(encoded, hf1, dim=-1)
         ht1 = self.ht1(ht)
@@ -151,48 +148,4 @@ class MQCNNDecoder(nn.Module):
         h = self.h(h)
         return self.span_1(h), self.span_N(h)
 
-    def _get_global_future_layer(self, x):
-        x = x.view(-1, self.Trnn, self.lead_future * self.future_features_count)
-        
-        return nn.Linear(self.lead_feature * self_future_features_count, 30)(x)
 
-    def _get_local_future_layer(self, x):
-        return nn.Tanh(x)
-
-    def _get_horizon_specific(self, x):
-        x = nn.Linear(self.Tpred * 20)(x)
-        x = nn.ReLU(x)
-
-        return x.view(-1, self.Trnn, self.Tpred, 20)
-
-    def _get_horizon_agnostic(self, x, in_channels, out_channels):
-        x = nn.Linear(in_channels, out_channels)(x)
-        x = nn.ReLU(x)
-        x = x.unsqueeze(axis = 2)
-        x = x.repeat(1,1, self.lead_future, 1)
-
-        return x
-
-    def _get_local_mlp(self,x):
-        x = nn.Linear(in_channels, 50)(x)
-        x = nn.ReLU(x)
-        x = nn.Linear(in_channels, 10)(x)
-        x = nn.ReLU(x)
-
-        return x
-
-    def _get_span_1(self, x):
-        x = nn.Linear(x.size(-1), self.num_quantiles)
-        x = F.relu(x.contiguous().view(-1, x.size(-2), x.size(-1)))
-        x = x.view(-1, self.Trnn, self.lead_future, self.num_quantiles)
-        x = x.view(-1, Self.Trnn, self.lead_future*self.num_quantiles)
-
-        return x
-
-    def _get_span_N(self, x):
-        x = x.permute(0, 1, 3, 2)
-        x = x.contiguous().view(-1, self.Trnn, x.size(-2) * x.size(-1))
-
-        x = nn.Linear(x.size(-1), self.spanN_count * self.num_quantiles)
-
-        return x
