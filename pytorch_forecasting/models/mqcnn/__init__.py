@@ -6,7 +6,7 @@ from torch.utils.data.distributed import DistributedSampler
 import numpy as np
 import pandas as pd
 import torch as torch
-from pytorch_forecasting.data import TimeSeriesDataSet
+from pytorch_forecasting.data impgit ort TimeSeriesDataSet
 from pytorch_forecasting.metrics import MAE, MAPE, MASE, RMSE, SMAPE, MultiHorizonMetric, QuantileLoss
 from pytorch_forecasting.models.base_model import BaseModelWithCovariates
 from pytorch_forecasting.models.mqcnn.sub_modules import (
@@ -46,7 +46,7 @@ class MQCNNEncoder(nn.Module):
         return torch.cat((x_s, x_t), axis = 1)
 
 
-cclass MQCNNDecoder(nn.Module):
+class MQCNNDecoder(nn.Module):
     """Decoder implementation for MQCNN
 
     Parameters
