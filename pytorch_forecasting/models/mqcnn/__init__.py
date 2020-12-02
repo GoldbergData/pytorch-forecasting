@@ -10,7 +10,8 @@ from pytorch_forecasting.data import TimeSeriesDataSet
 from pytorch_forecasting.metrics import MAE, MAPE, MASE, RMSE, SMAPE, MultiHorizonMetric, QuantileLoss
 from pytorch_forecasting.models.base_model import BaseModelWithCovariates
 from pytorch_forecasting.models.mqcnn.sub_modules import (
-    StaticLayer, ConvLayer, ExpandLayer
+    StaticLayer, ConvLayer, ExpandLayer, GlobalFutureLayer, HorizonAgnostic, HorizonSpecific,
+    Span1, SpanN, LocalMlp
 )
 
 class MQCNNModel(BaseModelWithCovariates):
