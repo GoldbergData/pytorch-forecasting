@@ -148,3 +148,5 @@ lightning_logs
 pytorch_forecasting/data/*.parquet
 
 .ipynb_checkpoints/*
+*.csv
+example_data.py

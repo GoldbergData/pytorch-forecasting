@@ -8,9 +8,9 @@ import pandas as pd
 import torch as torch
 
 class StaticLayer(nn.Module):
-    def __init__(self,in_channels, out_channels = 30, dropout = 0.4, Trnn, static_features):
+    def __init__(self, in_channels, out_channels = 30, dropout = 0.4, time_step, static_features):
         super().__init__()
-        self.Trnn = Trnn
+        self.time_step = time_step
         self.static_features = static_features
         self.dropout = dropout
         self.in_channels = in_channels
@@ -21,7 +21,7 @@ class StaticLayer(nn.Module):
         x = x[[self.static_features]].squeeze(1)
         x = self.dropout(x)
         x = self.static(x)
-        return x.unsqueeze(1).repeat(1, self.Trnn, 1)
+        return x.unsqueeze(1).repeat(1, self.time_step, 1)
 
 class ConvLayer(nn.Module):
     def __init__(self, in_channels, out_channels = 30, kernel_size = 2, timevarying_features):
@@ -36,7 +36,7 @@ class ConvLayer(nn.Module):
         c3 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size,  dilation = 4)
         c4 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 8)
         c5 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 16)
-        c6 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size dilation = 32)
+        c6 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 32)
 
     def forward(self, x):
         x_t = x[[self.timevarying_features]]
@@ -66,7 +66,7 @@ class ExpandLayer(nn.Module):
       [4. 5.]
       [6. 7.]]]
 
-    where `expand_axis` = 1 and `Trnn` = 3 (number of windows) and
+    where `expand_axis` = 1 and `time_step` = 3 (number of windows) and
     `lead_future` = 2 (window length) will become:
 
     [[[[0. 1.]
@@ -82,24 +82,24 @@ class ExpandLayer(nn.Module):
 
     Parameters
     ----------
-    Trnn : int
+    time_step : int
         Length of the time sequence (number of windows)
     lead_future : int
         Number of future time points (window length)
     expand_axis : int
         Axis to expand"""
 
-    def __init__(self, Trnn, lead_future, future_information, **kwargs):
+    def __init__(self, time_step, lead_future, future_information, **kwargs):
         super(ExpandLayer, self).__init__(**kwargs)
     
-        self.Trnn = Trnn
+        self.time_step = time_step
         self.future_information = future_information
         self.lead_future = lead_future
 
     def forward(self, x):
 
         # First create a matrix of indices, which we will use to slice
-        # `input` along `expand_axis`. For example, for Trnn=3 and
+        # `input` along `expand_axis`. For example, for time_step=3 and
         # lead_future=2,
         # idx = [[0. 1.]
         #        [1. 2.]
@@ -107,7 +107,7 @@ class ExpandLayer(nn.Module):
         # We achieve this by doing a broadcast add of
         # [[0.] [1.] [2.]] and [[0. 1.]]
         x = x[[self.future_information]]
-        idx = torch.add(torch.arange(self.Trnn).unsqueeze(axis = 1), 
+        idx = torch.add(torch.arange(self.time_step).unsqueeze(axis = 1),
                         torch.arange(self.lead_future).unsqueeze(axis = 0))
         # Now we slice `input`, taking elements from `input` that correspond to
         # the indices in `idx` along the `expand_axis` dimension
@@ -120,40 +120,35 @@ class GlobalFutureLayer(nn.Module):
         self.lead_future = lead_future
         self.future_features_count = future_features_count
         self.out_channels = out_channels
-        
-        self.l1 = nn.Linear(self.lead_feature * self_future_features_count, out_channels)
+
+        self.l1 = nn.Linear(self.lead_feature * self.future_features_count, out_channels)
         
     def forward(self, x):
-        x = x.view(-1, self.Trnn, self.lead_future * self.future_features_count)
+        x = x.view(-1, self.time_step, self.lead_future * self.future_features_count)
         
         return self.l1(x)
     
-class  HorizonSpecific(nn.Module):
-    def __init__(self, Tpred, Trnn, num = 20):
+class HorizonSpecific(nn.Module):
+    def __init__(self, Tpred, time_step, num = 20):
         super().__init__()
         self.Tpred = Tpred
-        self.Trnn = Trnn
+        self.time_step = time_step
         self.num = num
-        self.l1 = nn.Linear(Tpred * num, )
         
     def forward(self, x):
-        
-        x = self.l1(x)
+        x = nn.Linear(x.size(-1), self.Tpred * self.num)(x)
         x = F.relu(x)
 
-        return x.view(-1, self.Trnn, self.Tpred, 20)
+        return x.view(-1, self.time_step, self.Tpred, 20)
 
 class HorizonAgnostic(nn.module):
-    def __init__(self,in_channels, out_channels, lead_future):
+    def __init__(self, out_channels, lead_future):
         super().__init__()
-        self.in_channels = in_channels
         self.out_channels = out_channels
         self.lead_future = lead_future
         
-        self.l1 = nn.Linear(self.in_channels, self.out_channels)
-        
     def forward(self, x):
-        x = self.l1(x)
+        x = nn.Linear(x.size(-1), self.out_channels)(x)
         x = F.relu(x)
         x = x.unsqueeze(axis = 2)
         x = x.repeat(1,1, self.lead_future, 1)
@@ -161,50 +156,46 @@ class HorizonAgnostic(nn.module):
         return x
     
 class LocalMlp(nn.Module):
-    def __init__(self, in_channels, hidden, output):
+    def __init__(self, hidden, output):
         super().__init__()
-        self.in_channels = in_channels
         self.hidden = hidden
         self.output = output
         
-        self.l1 = nn.Linear(self.in_channels, self.hidden)
-        self.l2 = nn.Linear(self.hidden, self.output)
-        
-    def forward(self,x):
-        x = self.l1(x)
+    def forward(self, x):
+        x = nn.Linear(x.size(-1), self.hidden)(x)
         x = F.relu(x)
-        x = self.l2(x)
+        x = nn.Linear(self.hidden, self.output)(x)
         x = F.relu(x)
 
         return x
 
 
 class Span1(nn.Module):
-    def __init__(self, Trnn, lead_future, num_quantiles):
+    def __init__(self, time_step, lead_future, num_quantiles):
         super().__init__()
-        self.Trnn = Trnn
+        self.time_step = time_step
         self.lead_future = lead_future
         self.num_quantiles = num_quantiles
         
     def forward(self, x):
         x = nn.Linear(x.size(-1), self.num_quantiles)
         x = F.relu(x.contiguous().view(-1, x.size(-2), x.size(-1)))
-        x = x.view(-1, self.Trnn, self.lead_future, self.num_quantiles)
-        x = x.view(-1, Self.Trnn, self.lead_future*self.num_quantiles)
+        x = x.view(-1, self.time_step, self.lead_future, self.num_quantiles)
+        x = x.view(-1, self.time_step, self.lead_future*self.num_quantiles)
 
         return x
     
 class SpanN(nn.Module):
-    def __init__(self, Trnn, lead_future, num_quantiles, spanN_count):
+    def __init__(self, time_step, lead_future, num_quantiles, spanN_count):
         super().__init__()
-        self.Trnn = Trnn
+        self.time_step = time_step
         self.lead_future = lead_future
         self.num_quantiles = num_quantiles
         self.spanN_count = spanN_count
         
     def forward(self, x):
         x = x.permute(0, 1, 3, 2)
-        x = x.contiguous().view(-1, self.Trnn, x.size(-2) * x.size(-1))
+        x = x.contiguous().view(-1, self.time_step, x.size(-2) * x.size(-1))
 
         x = nn.Linear(x.size(-1), self.spanN_count * self.num_quantiles)
 

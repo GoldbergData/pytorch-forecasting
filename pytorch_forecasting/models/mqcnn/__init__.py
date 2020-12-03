@@ -15,29 +15,45 @@ from pytorch_forecasting.models.mqcnn.sub_modules import (
 )
 
 class MQCNNModel(BaseModelWithCovariates):
-    def __init__(self, Trnn, static_features, timevarying_features, future_information, ltsp, lead_future):
-        self.Trnn = Trnn
+    def __init__(self, static_features, timevarying_features, time_step, future_information, ltsp, lead_future,
+                 global_hidden_units, horizon_specific_hidden_units,
+                 horizon_agnostic_hidden_units, local_mlp_hidden_units, local_mlp_output_units):
+        super(MQCNNModel, self).__init__()
+        self.time_step = time_step
         self.static_features = static_features
         self.timevarying_features = timevarying_features
         self.future_information = future_information
         self.ltsp = ltsp
         self.lead_future = lead_future
+        self.global_hidden_units = global_hidden_units
+        self.horizon_specific_hidden_units = horizon_specific_hidden_units
+        self.horizon_agnostic_hidden_units = horizon_agnostic_hidden_units
+        self.local_mlp_hidden_units = local_mlp_hidden_units
+        self.local_mlp_output_units = local_mlp_output_units
 
-        encoder = MQCNNEncoder(self.Trnn, self.static_features, self.timevarying_features)
-        decoder = MQCNNDecoder(self.Trnn, self.lead_future, self.ltsp, self.future_information, self.future_information)
-        super(MQCNNModel, self).__init__()
+        self.encoder = MQCNNEncoder(self.time_step, self.static_features, self.timevarying_features)
+        self.decoder = MQCNNDecoder(self.time_step, self.lead_future, self.ltsp, self.future_information,
+                                    self.global_hidden_units, self.horizon_specific_hidden_units,
+                                    self.horizon_agnostic_hidden_units, self.local_mlp_hidden_units,
+                                    self.local_mlp_output_units)
+
+    def forward(self, x):
+        encoding = self.encoder(x)
+        output = self.decoder(encoding, x)
+
+        return output
 
 class MQCNNEncoder(nn.Module):
-    def __init__(self, Trnn, static_features, timevarying_features):
-        self.Trnn = Trnn
+    def __init__(self, time_step, static_features, timevarying_features):
+        self.time_step = time_step
         self.static_features = static_features
         self.timevarying_features = timevarying_features
         self.static = StaticLayer(in_channels = len(self.static_features),
-                                  Trnn = self.Trnn,
+                                  Trnn = self.time_step,
                                   static_features = self.static_features)
 
         self.conv = ConvLayer(in_channels = len(self.timevarying_features),
-                             timevarying_features = self.timevarying_features)
+                              timevarying_features = self.timevarying_features)
 
     def forward(self, x):
         x_s = self.static(x)
@@ -92,18 +108,27 @@ class MQCNNDecoder(nn.Module):
 
     """
 
-    def __init__(self, Trnn, lead_future, future_information, ltsp, num_quantiles = 2,expander=None, hf1=None, hf2=None,
+    def __init__(self, time_step, lead_future, future_information, ltsp,
+                 global_hidden_units, horizon_specific_hidden_units, horizon_agnostic_hidden_units,
+                 local_mlp_hidden_units, local_mlp_output_units,
+                 num_quantiles = 2,expander=None, hf1=None, hf2=None,
                  ht1=None, ht2=None, h=None, span_1=None, span_N=None,
                  **kwargs):
         super(MQCNNDecoder, self).__init__(**kwargs)
         self.future_features_count = len(future_information)
         self.future_information = future_information
-        self.Trnn = Trnn
+        self.time_step = time_step
         self.lead_future = lead_future
         self.ltsp = ltsp
         self.num_quantiles = num_quantiles
+        self.global_hidden_units = global_hidden_units
+        self.horizon_specific_hidden_units = horizon_specific_hidden_units
+        self.horizon_agnostic_hidden_units = horizon_agnostic_hidden_units
+        self.local_mlp_hidden_units = local_mlp_hidden_units
+        self.local_mlp_output_units = local_mlp_output_units
 
         # We assume that Tpred == span1_count.
+        # Tpred = forecast_end_index
         self.Tpred = max(map(lambda x: x[0] + x[1], self.ltsp))
         span1_count = len(list(filter(lambda x: x[1] == 1, self.ltsp)))
         #print(self.Tpred, span1_count)
@@ -113,19 +138,19 @@ class MQCNNDecoder(nn.Module):
         self.spanN_count = len(list(filter(lambda x: x[1] != 1, self.ltsp)))
         # Setting default components:
         if expander is None:
-            expander = ExpandLayer(self.Trnn, self.lead_future, self.future_information)
+            expander = ExpandLayer(self.time_step, self.lead_future, self.future_information)
         if hf1 is None:
-            hf1 = GlobalFutureLayer(self.lead_future, self.future_features_count, out_channels=30)
+            hf1 = GlobalFutureLayer(self.lead_future, self.future_features_count, out_channels=self.global_hidden_units)
         if ht1 is None:
-            ht1 = HorizonSpecific(self.Tpred, self.Trnn, num = 20)
+            ht1 = HorizonSpecific(self.Tpred, self.time_step, num = self.horizon_specific_hidden_units)
         if ht2 is None:
-            ht2 = HorizonAgnostic(in_channels, out_channels, self.lead_future)
+            ht2 = HorizonAgnostic(self.horizon_agnostic_hidden_units, self.lead_future)
         if h is None:
-            h = LocalMlp(in_channels, hidden, output)
+            h = LocalMlp(self.local_mlp_hidden_units, self.local_mlp_output_units)
         if span_1 is None:
-            span_1 = Span1(self.Trnn, self.lead_future, self.num_quantiles)
+            span_1 = Span1(self.time_step, self.lead_future, self.num_quantiles)
         if span_N is None:
-            span_N = SpanN(self.Trnn, self.lead_future, self.num_quantiles, self.spanN_count)
+            span_N = SpanN(self.time_step, self.lead_future, self.num_quantiles, self.spanN_count)
 
         self.expander = expander
         self.hf1 = hf1
