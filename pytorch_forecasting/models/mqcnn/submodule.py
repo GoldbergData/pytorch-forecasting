@@ -8,51 +8,50 @@ import pandas as pd
 import torch as torch
 
 class StaticLayer(nn.Module):
-    def __init__(self, in_channels, out_channels = 30, dropout = 0.4, time_step, static_features):
+    def __init__(self, in_channels, time_step, static_features, out_channels = 30, dropout = 0.4):
         super().__init__()
         self.time_step = time_step
-        self.static_features = static_features
-        self.dropout = dropout
+        #self.static_features = static_features
+        self.dropout = nn.Dropout(dropout)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.static = nn.Linear(self.in_channels, self.out_channels)
 
     def forward(self, x):
-        x = x[[self.static_features]].squeeze(1)
+        x = x['static_features'][:,:1,:]
         x = self.dropout(x)
         x = self.static(x)
-        return x.unsqueeze(1).repeat(1, self.time_step, 1)
+        return x.repeat(1, self.time_step, 1)
 
 class ConvLayer(nn.Module):
-    def __init__(self, in_channels, out_channels = 30, kernel_size = 2, timevarying_features):
+    def __init__(self, time_step, timevarying_features, in_channels, out_channels = 30, kernel_size = 2):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.timevarying_features = timevarying_features
+        self.time_step = time_step
 
-        c1 = nn.Conv1d(self.in_channels, self.out_channels, self.kernel_size, dilation = 1)
-        c2 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 2)
-        c3 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size,  dilation = 4)
-        c4 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 8)
-        c5 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 16)
-        c6 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 32)
+        self.c1 = nn.Conv1d(self.in_channels, self.out_channels, self.kernel_size, dilation = 1)
+        self.c2 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 2)
+        self.c3 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size,  dilation = 4)
+        self.c4 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 8)
+        self.c5 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 16)
+        self.c6 = nn.Conv1d(self.out_channels, self.out_channels, self.kernel_size, dilation = 32)
 
     def forward(self, x):
-        x_t = x[[self.timevarying_features]]
-        x_t = x_t.permute(0, 2, 1))
-        x_t = F.pad(x_t, (0,0), "constant", 0)
-        x_t = c1(x_t)
+        x_t = x['timevarying_features'][:, :self.time_step, :]
+        x_t = x_t.permute(0, 2, 1)
+        x_t = F.pad(x_t, (1,0), "constant", 0)
+        x_t = self.c1(x_t)
         x_t = F.pad(x_t, (2,0), "constant", 0)
-        x_t = c2(x_t)
+        x_t = self.c2(x_t)
         x_t = F.pad(x_t, (4,0), "constant", 0)
-        x_t = c3(x_t)
+        x_t = self.c3(x_t)
         x_t = F.pad(x_t, (8,0), "constant", 0)
-        x_t = c4(x_t)
+        x_t = self.c4(x_t)
         x_t = F.pad(x_t, (16,0), "constant", 0)
-        x_t = c5(x_t)
-        x_t = F.pad(x_t, (32,0), "constant", 0)
-        x_t = c6(x_t)
+        x_t = self.c5(x_t)
         
         return x_t.permute(0, 2, 1)
 
@@ -106,7 +105,6 @@ class ExpandLayer(nn.Module):
         #        [2. 3.]]
         # We achieve this by doing a broadcast add of
         # [[0.] [1.] [2.]] and [[0. 1.]]
-        x = x[[self.future_information]]
         idx = torch.add(torch.arange(self.time_step).unsqueeze(axis = 1),
                         torch.arange(self.lead_future).unsqueeze(axis = 0))
         # Now we slice `input`, taking elements from `input` that correspond to
@@ -115,16 +113,17 @@ class ExpandLayer(nn.Module):
 
         
 class GlobalFutureLayer(nn.Module):
-    def __init__(self, lead_future, future_features_count, out_channels = 30):
+    def __init__(self, time_step, lead_future, future_features_count, out_channels = 30):
         super().__init__()
+        self.time_step = time_step
         self.lead_future = lead_future
         self.future_features_count = future_features_count
         self.out_channels = out_channels
 
-        self.l1 = nn.Linear(self.lead_feature * self.future_features_count, out_channels)
+        self.l1 = nn.Linear(self.lead_future * self.future_features_count, out_channels)
         
     def forward(self, x):
-        x = x.view(-1, self.time_step, self.lead_future * self.future_features_count)
+        x = x.contiguous().view(-1, self.time_step, self.lead_future * self.future_features_count)
         
         return self.l1(x)
     
@@ -141,7 +140,7 @@ class HorizonSpecific(nn.Module):
 
         return x.view(-1, self.time_step, self.Tpred, 20)
 
-class HorizonAgnostic(nn.module):
+class HorizonAgnostic(nn.Module):
     def __init__(self, out_channels, lead_future):
         super().__init__()
         self.out_channels = out_channels
@@ -178,13 +177,14 @@ class Span1(nn.Module):
         self.num_quantiles = num_quantiles
         
     def forward(self, x):
-        x = nn.Linear(x.size(-1), self.num_quantiles)
+        x = nn.Linear(x.size(-1), self.num_quantiles)(x)
         x = F.relu(x.contiguous().view(-1, x.size(-2), x.size(-1)))
         x = x.view(-1, self.time_step, self.lead_future, self.num_quantiles)
         x = x.view(-1, self.time_step, self.lead_future*self.num_quantiles)
 
         return x
-    
+
+
 class SpanN(nn.Module):
     def __init__(self, time_step, lead_future, num_quantiles, spanN_count):
         super().__init__()
@@ -197,6 +197,6 @@ class SpanN(nn.Module):
         x = x.permute(0, 1, 3, 2)
         x = x.contiguous().view(-1, self.time_step, x.size(-2) * x.size(-1))
 
-        x = nn.Linear(x.size(-1), self.spanN_count * self.num_quantiles)
+        x = nn.Linear(x.size(-1), self.spanN_count * self.num_quantiles)(x)
 
         return x

@@ -14,15 +14,19 @@ from pytorch_forecasting.models.mqcnn.sub_modules import (
     Span1, SpanN, LocalMlp
 )
 
-class MQCNNModel(BaseModelWithCovariates):
-    def __init__(self, static_features, timevarying_features, time_step, future_information, ltsp, lead_future,
+class MQCNNModel(nn.Module):
+    def __init__(self, static_features, timevarying_features, future_information, time_step, ltsp, lead_future,
                  global_hidden_units, horizon_specific_hidden_units,
                  horizon_agnostic_hidden_units, local_mlp_hidden_units, local_mlp_output_units):
         super(MQCNNModel, self).__init__()
+        #self.input_tensor = input_tensor
         self.time_step = time_step
         self.static_features = static_features
+        self.num_static_features = len(static_features)
         self.timevarying_features = timevarying_features
+        self.num_timevarying_features = len(timevarying_features)
         self.future_information = future_information
+        self.num_future_features = len(future_information)
         self.ltsp = ltsp
         self.lead_future = lead_future
         self.global_hidden_units = global_hidden_units
@@ -31,35 +35,40 @@ class MQCNNModel(BaseModelWithCovariates):
         self.local_mlp_hidden_units = local_mlp_hidden_units
         self.local_mlp_output_units = local_mlp_output_units
 
-        self.encoder = MQCNNEncoder(self.time_step, self.static_features, self.timevarying_features)
+        self.encoder = MQCNNEncoder(self.time_step, self.static_features, self.timevarying_features,
+                                   self.num_static_features, self.num_timevarying_features)
+        
         self.decoder = MQCNNDecoder(self.time_step, self.lead_future, self.ltsp, self.future_information,
-                                    self.global_hidden_units, self.horizon_specific_hidden_units,
+                                    self.num_future_features, self.global_hidden_units, self.horizon_specific_hidden_units,
                                     self.horizon_agnostic_hidden_units, self.local_mlp_hidden_units,
                                     self.local_mlp_output_units)
 
     def forward(self, x):
         encoding = self.encoder(x)
-        output = self.decoder(encoding, x)
+        output = self.decoder(x, encoding)
 
         return output
 
 class MQCNNEncoder(nn.Module):
-    def __init__(self, time_step, static_features, timevarying_features):
+    def __init__(self, time_step, static_features, timevarying_features, num_static_features, num_timevarying_features):
+        super().__init__()
         self.time_step = time_step
         self.static_features = static_features
         self.timevarying_features = timevarying_features
-        self.static = StaticLayer(in_channels = len(self.static_features),
-                                  Trnn = self.time_step,
+        self.num_static_features = num_static_features
+        self.num_timevarying_features = num_timevarying_features
+        self.static = StaticLayer(in_channels = self.num_static_features,
+                                  time_step = self.time_step,
                                   static_features = self.static_features)
 
-        self.conv = ConvLayer(in_channels = len(self.timevarying_features),
-                              timevarying_features = self.timevarying_features)
+        self.conv = ConvLayer(in_channels = self.num_timevarying_features,
+                              timevarying_features = self.timevarying_features,
+                             time_step = self.time_step)
 
     def forward(self, x):
         x_s = self.static(x)
         x_t = self.conv(x)
-
-        return torch.cat((x_s, x_t), axis = 1)
+        return torch.cat((x_s, x_t), axis = 2)
 
 
 class MQCNNDecoder(nn.Module):
@@ -104,18 +113,18 @@ class MQCNNDecoder(nn.Module):
         then the span 1 predictions will be:
         Tpred_0_p50, Tpred_1_p50, ..., Tpred_N_p50, Tpred_0_p90,
         Tpred_1_p90, ... Tpred_N_90
-
-
+        
+        
     """
 
-    def __init__(self, time_step, lead_future, future_information, ltsp,
+    def __init__(self, time_step, lead_future, ltsp, future_information, num_future_features,
                  global_hidden_units, horizon_specific_hidden_units, horizon_agnostic_hidden_units,
                  local_mlp_hidden_units, local_mlp_output_units,
-                 num_quantiles = 2,expander=None, hf1=None, hf2=None,
+                 num_quantiles=2, expander=None, hf1=None, hf2=None,
                  ht1=None, ht2=None, h=None, span_1=None, span_N=None,
                  **kwargs):
         super(MQCNNDecoder, self).__init__(**kwargs)
-        self.future_features_count = len(future_information)
+        self.future_features_count = num_future_features
         self.future_information = future_information
         self.time_step = time_step
         self.lead_future = lead_future
@@ -129,18 +138,21 @@ class MQCNNDecoder(nn.Module):
 
         # We assume that Tpred == span1_count.
         # Tpred = forecast_end_index
-        self.Tpred = max(map(lambda x: x[0] + x[1], self.ltsp))
-        span1_count = len(list(filter(lambda x: x[1] == 1, self.ltsp)))
+#         self.Tpred = max(map(lambda x: x[0] + x[1], self.ltsp))
+        self.Tpred = 6
+#         span1_count = len(list(filter(lambda x: x[1] == 1, self.ltsp)))
+        span1_count = 1
         #print(self.Tpred, span1_count)
         #assert span1_count == self.Tpred, f"Number of span 1 horizons: {span1_count}\
                                             #does not match Tpred: {self.Tpred}" 
 
-        self.spanN_count = len(list(filter(lambda x: x[1] != 1, self.ltsp)))
+#         self.spanN_count = len(list(filter(lambda x: x[1] != 1, self.ltsp)))
+        self.spanN_count = 1
         # Setting default components:
         if expander is None:
             expander = ExpandLayer(self.time_step, self.lead_future, self.future_information)
         if hf1 is None:
-            hf1 = GlobalFutureLayer(self.lead_future, self.future_features_count, out_channels=self.global_hidden_units)
+            hf1 = GlobalFutureLayer(self.time_step, self.lead_future, self.future_features_count, out_channels=self.global_hidden_units)
         if ht1 is None:
             ht1 = HorizonSpecific(self.Tpred, self.time_step, num = self.horizon_specific_hidden_units)
         if ht2 is None:
@@ -161,17 +173,15 @@ class MQCNNDecoder(nn.Module):
         self.span_1 = span_1
         self.span_N = span_N
 
-    def forward(self, F, x, encoded):
-        xf = x[[self.future_information]]
+    def forward(self, x, encoded):
+        xf = x['future_information']
         expanded = self.expander(xf)
         hf1 = self.hf1(expanded)
-        hf2 = F.tanh(expanded)
-
-        ht = torch.cat(encoded, hf1, dim=-1)
+        hf2 = F.relu(expanded)
+        
+        ht = torch.cat((encoded, hf1), dim=-1)
         ht1 = self.ht1(ht)
         ht2 = self.ht2(ht)
-        h = torch.cat(ht1, ht2, hf2, dim=-1)
+        h = torch.cat((ht1, ht2, hf2), dim=-1)
         h = self.h(h)
-        return self.span_1(h), self.span_N(h)
-
-
+        return self.span_1(h)
