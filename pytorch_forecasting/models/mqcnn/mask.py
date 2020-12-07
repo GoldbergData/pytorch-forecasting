@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.functional as F
 
-cclass InstockMask(nn.Module):
+class InstockMask(nn.Module):
     def __init__(self, time_step, ltsp, min_instock_ratio = 0.5, eps_instock_dph = 1e-3,
                 eps_total_dph = 1e-3, **kwargs):
 
@@ -58,10 +58,11 @@ class HorizonMask(_BaseInstockMask):
         
         self.mask_idx = _compute_horizon_mask(time_step, ltsp)
 
-    def forward(self, F, demand, total_dph, instock_dph):
-        demand_instock = self.instock_mask(demand, total_dph, instock_dph)
+    def forward(self, demand, total_dph, instock_dph):
+        demand_instock = self.instock_mask(demand, total_dph, instock_dph).float()
+        
 
-        mask = torch.broadcast_tensors(self.mask_idx, demand_instock)
+        mask = mask_idx.unsqueeze(2).repeat(1, 1, mask_idx.shape[1])
 
         masked_demand = torch.where(mask, demand_instock, -torch.ones_like(demand_instock))
 
