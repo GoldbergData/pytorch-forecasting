@@ -40,7 +40,7 @@ class DemandExpander(nn.Module):
 
 def _ltsp_idx(time_step, Tpred):
     idx = np.arange(time_step).reshape(-1, 1) + np.arange(Tpred)
-    return nd.array(idx)
+    return torch.tensor(idx)
 
 def _ltsp_kernel(Tpred, ltsp, normalize):
 
@@ -54,4 +54,9 @@ def _ltsp_kernel(Tpred, ltsp, normalize):
         else:
             kernel[lead_time:lead_time + span, i] = 1.0
 
-    return nd.array(kernel)
+    return torch.tensor(kernel)
+
+def _apply_ltsp_kernel(s, ltsp_idx, ltsp_kernel):
+    s_ltsp = s[:, ltsp_idx].float()
+
+    return torch.mul(s_ltsp, ltsp_kernel)
