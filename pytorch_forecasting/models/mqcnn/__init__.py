@@ -49,7 +49,7 @@ class MQCNNModel(pl.LightningModule):
 
         return output
 
-    def configure_optimizers():
+    def configure_optimizers(self):
         optimizer = optim.SGD(self.parameters(), lr = 1e-2)
 
         return optimizer
@@ -60,8 +60,9 @@ class MQCNNModel(pl.LightningModule):
         outputs = self(x)
 
         loss = loss(outputs, y)
+        pbar = {'train_loss': loss[0] + loss[1]}
 
-        return {"loss": loss[0] + loss[1]}
+        return {"loss": loss[0] + loss[1], "progress_bar": pbar}
 
     def train_dataloader(self):
 
@@ -71,7 +72,18 @@ class MQCNNModel(pl.LightningModule):
 
         return train_loader
 
-    
+    def validation_step(self, batch, batch_idx):
+
+        results = self.training_step(batch, batch_idx)
+
+        return results
+
+    def validation_epoch_end(self, val_step_outputs):
+        avg_val_loss = torch.tensor([x['loss'] for x in val_step_outputs]).mean()
+
+        pbar = {'avg_val_loss': avg_val_loss}
+        
+        return {'val_loss': avg_val_loss, "progress_bar": pbar}    
 
 class MQCNNEncoder(nn.Module):
     def __init__(self, time_step, static_features, timevarying_features, num_static_features, num_timevarying_features):
