@@ -16,7 +16,7 @@ class InstockMask(nn.Module):
         self.eps_instock_dph = eps_instock_dph
         self.eps_total_dph = eps_total_dph
 
-    def forward(self, F, demand, total_dph, instock_dph):
+    def forward(self, demand, total_dph, instock_dph):
 
         if total_dph is not None and instock_dph is not None:
 
@@ -44,7 +44,7 @@ class _BaseInstockMask(nn.Module):
                                         eps_instock_dph = eps_instock_dph, 
                                         eps_total_dph = eps_total_dph)
 
-    def forward(self, F):
+    def forward(self):
         raise NotImplementedError
 
 class HorizonMask(_BaseInstockMask):
@@ -61,9 +61,9 @@ class HorizonMask(_BaseInstockMask):
     def forward(self, demand, total_dph, instock_dph):
         demand_instock = self.instock_mask(demand, total_dph, instock_dph).float()
         
-
-        mask = mask_idx.unsqueeze(2).repeat(1, 1, mask_idx.shape[1])
-
+        mask = mask_idx.repeat(demand_instock.shape[0], 1, 1)
+        
+        print(f'demand shape: {demand_instock.shape}, mask shape: {mask_idx.shape}')
         masked_demand = torch.where(mask, demand_instock, -torch.ones_like(demand_instock))
 
         return masked_demand
