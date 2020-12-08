@@ -14,7 +14,7 @@ from pytorch_forecasting.models.mqcnn.sub_modules import (
     Span1, SpanN, LocalMlp
 )
 
-class MQCNNModel(nn.Module):
+class MQCNNModel(pl.LightningModule):
     def __init__(self, static_features, timevarying_features, future_information, time_step, ltsp, lead_future,
                  global_hidden_units, horizon_specific_hidden_units,
                  horizon_agnostic_hidden_units, local_mlp_hidden_units, local_mlp_output_units):
@@ -48,6 +48,30 @@ class MQCNNModel(nn.Module):
         output = self.decoder(x, encoding)
 
         return output
+
+    def configure_optimizers():
+        optimizer = optim.SGD(self.parameters(), lr = 1e-2)
+
+        return optimizer
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+
+        outputs = self(x)
+
+        loss = loss(outputs, y)
+
+        return {"loss": loss[0] + loss[1]}
+
+    def train_dataloader(self):
+
+        train_data = Dataset("-----enter args here------")
+
+        train_loader = DataLoader(train_data, batch_size = batch_size)
+
+        return train_loader
+
+    
 
 class MQCNNEncoder(nn.Module):
     def __init__(self, time_step, static_features, timevarying_features, num_static_features, num_timevarying_features):
@@ -184,4 +208,4 @@ class MQCNNDecoder(nn.Module):
         ht2 = self.ht2(ht)
         h = torch.cat((ht1, ht2, hf2), dim=-1)
         h = self.h(h)
-        return self.span_1(h)
+        return self.span_1(h), self.span_N(h)
